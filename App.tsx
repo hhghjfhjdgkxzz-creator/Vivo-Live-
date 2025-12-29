@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
-import { Home, User as UserIcon, Plus, Bell, Crown, Gem, Settings, ChevronRight, Edit3, Share2, LogOut, Shield, Database, ShoppingBag, Camera, Trophy, Flame, Sparkles, UserX, Star, ShieldCheck, MapPin, Download, Smartphone, MessageCircle, Languages } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Home, User as UserIcon, Plus, Bell, Crown, Gem, Settings, ChevronRight, Edit3, Share2, LogOut, Shield, Database, ShoppingBag, Camera, Trophy, Flame, Sparkles, UserX, Star, ShieldCheck, MapPin, Download, Smartphone, MessageCircle, Languages, Smartphone as MobileIcon, Wallet } from 'lucide-react';
 import RoomCard from './components/RoomCard';
 import VoiceRoom from './components/VoiceRoom';
 import AuthScreen from './components/AuthScreen';
@@ -15,6 +15,7 @@ import AdminPanel from './components/AdminPanel';
 import MiniPlayer from './components/MiniPlayer';
 import PrivateChatModal from './components/PrivateChatModal';
 import MessagesTab from './components/MessagesTab';
+import WalletModal from './components/WalletModal';
 import { DEFAULT_VIP_LEVELS, DEFAULT_GIFTS, DEFAULT_STORE_ITEMS } from './constants';
 import { Room, User, VIPPackage, UserLevel, Gift, StoreItem, GameSettings, GlobalAnnouncement, LuckyBag } from './types';
 import { AnimatePresence, motion } from 'framer-motion';
@@ -23,11 +24,11 @@ import { collection, onSnapshot, doc, setDoc, query, orderBy, addDoc, getDoc, se
 import { deleteUser, signOut } from 'firebase/auth';
 
 const translations = {
-  ar: { home: "الرئيسية", messages: "الرسائل", profile: "حسابي", createRoom: "إنشاء غرفة", topSupporters: "كبار الداعمين", activeRooms: "الغرف النشطة", noRooms: "لا توجد غرف نشطة حالياً", coinsBalance: "رصيد العملات", adminPanel: "لوحة الإدارة", editAccount: "تعديل الحساب", storeBag: "المتجر والحقيبة", vipMembership: "عضوية الـ VIP", logout: "خروج", deleteAccount: "حذف الحساب نهائياً", appVersion: "نسخة الجوال متوفرة!", installNow: "تثبيت التطبيق الآن", search: "بحث في المحادثات...", id: "ID", lvl: "Lv.", confirmDelete: "هل أنت متأكد من حذف حسابك نهائياً؟" },
-  en: { home: "Home", messages: "Messages", profile: "Profile", createRoom: "Create", topSupporters: "Top Supporters", activeRooms: "Active Rooms", noRooms: "No active rooms now", coinsBalance: "Coins Balance", adminPanel: "Admin Panel", editAccount: "Edit Profile", storeBag: "Store & Bag", vipMembership: "VIP Membership", logout: "Logout", deleteAccount: "Delete Account Forever", appVersion: "Mobile Version Available!", installNow: "Install App Now", search: "Search conversations...", id: "ID", lvl: "Lv.", confirmDelete: "Are you sure you want to delete your account?" }
+  ar: { home: "الرئيسية", messages: "الرسائل", profile: "حسابي", createRoom: "إنشاء غرفة", topSupporters: "كبار الداعمين", activeRooms: "الغرف النشطة", noRooms: "لا توجد غرف نشطة حالياً", coinsBalance: "رصيد العملات", adminPanel: "لوحة الإدارة", editAccount: "تعديل الحساب", storeBag: "المتجر والحقيبة", vipMembership: "عضوية الـ VIP", myWallet: "المحفظة", logout: "خروج", deleteAccount: "حذف الحساب نهائياً", appVersion: "نسخة الجوال متوفرة!", installNow: "تثبيت التطبيق الآن", search: "بحث في المحادثات...", id: "ID", lvl: "Lv.", confirmDelete: "هل أنت متأكد من حذف حسابك نهائياً؟" },
+  en: { home: "Home", messages: "Messages", profile: "Profile", createRoom: "Create", topSupporters: "Top Supporters", activeRooms: "Active Rooms", noRooms: "No active rooms now", coinsBalance: "Coins Balance", adminPanel: "Admin Panel", editAccount: "Edit Profile", storeBag: "Store & Bag", vipMembership: "VIP Membership", myWallet: "Wallet", logout: "Logout", deleteAccount: "Delete Account Forever", appVersion: "Mobile Version Available!", installNow: "Install App Now", search: "Search conversations...", id: "ID", lvl: "Lv.", confirmDelete: "Are you sure you want to delete your account?" }
 };
 
-const DEFAULT_LOGO = 'https://storage.googleapis.com/static.aistudio.google.com/stables/2025/03/06/f0e64906-e7e0-4a87-af9b-029e2467d302/f0e64906-e7e0-4a87-af9b-029e2467d302.png';
+const PERMANENT_LOGO_URL = 'https://storage.googleapis.com/static.aistudio.google.com/stables/2025/03/06/f0e64906-e7e0-4a87-af9b-029e2467d302/f0e64906-e7e0-4a87-af9b-029e2467d302.png';
 
 export default function App() {
   const [initializing, setInitializing] = useState(true);
@@ -46,25 +47,49 @@ export default function App() {
   const [announcement, setAnnouncement] = useState<GlobalAnnouncement | null>(null);
   const [appBanner, setAppBanner] = useState('');
   const [privateChatPartner, setPrivateChatPartner] = useState<User | null>(null);
+  
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const isUpdatingProfile = useRef(false);
 
   const [appLogo, setAppLogo] = useState(() => {
-    return localStorage.getItem('vivo_live_logo_fixed') || DEFAULT_LOGO;
+    return localStorage.getItem('vivo_live_fixed_logo') || PERMANENT_LOGO_URL;
   });
 
   const t = translations[language];
 
   const [gameSettings, setGameSettings] = useState<GameSettings>({
-     slotsWinRate: 35, wheelWinRate: 45, luckyGiftWinRate: 30, luckyGiftRefundPercent: 200, luckyXEnabled: true,
+     slotsWinRate: 35, wheelWinRate: 45, luckyGiftWinRate: 30, luckyXEnabled: true,
      luckyMultipliers: [{ label: 'X10', value: 10, chance: 70 }, { label: 'X50', value: 50, chance: 20 }, { label: 'X100', value: 100, chance: 8 }, { label: 'X500', value: 500, chance: 2 }],
-     wheelJackpotX: 8, wheelNormalX: 2, slotsSevenX: 20, slotsFruitX: 5, availableEmojis: [], emojiDuration: 1.5
+     wheelJackpotX: 8, wheelNormalX: 2, slotsSevenX: 20, slotsFruitX: 5, availableEmojis: [], emojiDuration: 1.5,
+     luckyGiftRefundPercent: 200
   });
 
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [showVIPModal, setShowVIPModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [showBagModal, setShowBagModal] = useState(false);
+  const [showWalletModal, setShowWalletModal] = useState(false);
   const [showCreateRoomModal, setShowCreateRoomModal] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+
+  useEffect(() => {
+    if (announcement) {
+      const timer = setTimeout(() => {
+        setAnnouncement(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [announcement]);
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+    window.addEventListener('appinstalled', () => {
+      setDeferredPrompt(null);
+    });
+  }, []);
 
   useEffect(() => {
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
@@ -72,23 +97,11 @@ export default function App() {
   }, [language]);
 
   useEffect(() => {
-    if (appLogo) {
-      const link: HTMLLinkElement | null = document.querySelector("link[rel~='icon']");
-      if (link) link.href = appLogo;
-      const appleIcon: HTMLLinkElement | null = document.querySelector("link[rel='apple-touch-icon']");
-      if (appleIcon) appleIcon.href = appLogo;
-      localStorage.setItem('vivo_live_logo_fixed', appLogo);
-    }
-  }, [appLogo]);
-
-  useEffect(() => {
     const unsubSettings = onSnapshot(doc(db, 'appSettings', 'global'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.appBanner) setAppBanner(data.appBanner);
-        if (data.appLogo && data.appLogo !== appLogo) {
-          setAppLogo(data.appLogo);
-        }
+        if (data.appLogo && data.appLogo !== appLogo) setAppLogo(data.appLogo);
         if (data.gameSettings) setGameSettings(data.gameSettings);
       }
     });
@@ -96,16 +109,13 @@ export default function App() {
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
         const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
         setUsers(usersData);
-        if (user) {
+        if (user && !isUpdatingProfile.current) {
           const currentInDb = usersData.find(u => u.id === user.id);
           if (currentInDb) {
             if (currentInDb.isBanned) { handleLogout(); } 
             else {
-               // Update only if data is different to avoid state loops
-               if (JSON.stringify(currentInDb) !== JSON.stringify(user)) {
-                  setUser(currentInDb);
-                  localStorage.setItem('voice_chat_user', JSON.stringify(currentInDb));
-               }
+               setUser(currentInDb);
+               localStorage.setItem('voice_chat_user', JSON.stringify(currentInDb));
             }
           }
         }
@@ -141,14 +151,58 @@ export default function App() {
       const parsedUser = JSON.parse(savedUser);
       getDoc(doc(db, 'users', parsedUser.id)).then((docSnap) => {
         if (docSnap.exists()) setUser(docSnap.data() as User);
-        setTimeout(() => setInitializing(false), 1500); 
+        setTimeout(() => setInitializing(false), 800);
       }).catch(() => setInitializing(false));
     } else {
-      setTimeout(() => setInitializing(false), 1500);
+      setTimeout(() => setInitializing(false), 800);
     }
     
     return () => { unsubSettings(); unsubRooms(); unsubUsers(); unsubGifts(); unsubStore(); unsubVip(); };
   }, []);
+
+  // وظيفة تحديث المستخدم - تدعم التحديث الفوري (Optimistic UI)
+  const handleUpdateUser = async (updatedData: Partial<User>) => {
+    if (!user) return;
+    const userId = updatedData.id || user.id;
+
+    // التحديث الفوري للواجهة لضمان عدم وجود تأخير
+    if (userId === user.id) {
+      setUser(prev => prev ? ({ ...prev, ...updatedData }) : null);
+    }
+    
+    isUpdatingProfile.current = true;
+    try {
+      // المزامنة مع Firebase في الخلفية
+      await updateDoc(doc(db, 'users', userId), updatedData);
+    } catch (error) {
+      console.error("Background sync failed:", error);
+    } finally {
+      // نترك العلم نشطاً لفترة بسيطة لتجنب تضارب الـ Snapshots
+      setTimeout(() => { isUpdatingProfile.current = false; }, 2000);
+    }
+  };
+
+  const handleExchangeDiamonds = async (diamondsAmount: number) => {
+    if (!user || (user.diamonds || 0) < diamondsAmount) return;
+    const coinsGained = Math.floor(diamondsAmount * 0.5);
+    
+    // تنفيذ الاستبدال الفوري في واجهة المستخدم (التحديث البصري)
+    const newDiamonds = (user.diamonds || 0) - diamondsAmount;
+    const newCoins = (user.coins || 0) + coinsGained;
+    
+    // تحديث الحالة المحلية فوراً
+    setUser(prev => prev ? ({ ...prev, diamonds: newDiamonds, coins: newCoins }) : null);
+
+    // ثم الحفظ في قاعدة البيانات في الخلفية
+    try {
+      await updateDoc(doc(db, 'users', user.id), {
+        diamonds: increment(-diamondsAmount),
+        coins: increment(coinsGained)
+      });
+    } catch (err) {
+      console.error("Exchange failed sync:", err);
+    }
+  };
 
   const onUpdateAppBanner = async (url: string) => {
     setAppBanner(url);
@@ -157,7 +211,7 @@ export default function App() {
 
   const onUpdateAppLogo = async (url: string) => {
     setAppLogo(url);
-    localStorage.setItem('vivo_live_logo_fixed', url);
+    localStorage.setItem('vivo_live_fixed_logo', url);
     await setDoc(doc(db, 'appSettings', 'global'), { appLogo: url }, { merge: true });
   };
 
@@ -178,50 +232,30 @@ export default function App() {
     setShowCreateRoomModal(false);
   };
 
-  const handleUpdateUser = async (updatedData: Partial<User>) => {
-    if (!user) return;
-    const userId = updatedData.id || user.id;
-    
-    // 1. Optimistic UI Update: تحديث فوري للحالة المحلية
-    const newUserState = { ...user, ...updatedData };
-    if (userId === user.id) {
-       setUser(newUserState);
-       localStorage.setItem('voice_chat_user', JSON.stringify(newUserState));
-    }
-
-    // 2. تحديث قاعدة بيانات المستخدمين
-    await setDoc(doc(db, 'users', userId), updatedData, { merge: true });
-
-    // 3. تحديث بيانات المتحدث في الغرفة الحالية (إن وجد) لضمان ظهور التحديث للجميع فوراً
-    if (currentRoom) {
-       const roomRef = doc(db, 'rooms', currentRoom.id);
-       const roomSnap = await getDoc(roomRef);
-       if (roomSnap.exists()) {
-          const roomData = roomSnap.data() as Room;
-          const updatedSpeakers = (roomData.speakers || []).map(s => 
-             s.id === userId ? { ...s, ...updatedData } : s
-          );
-          await updateDoc(roomRef, { speakers: updatedSpeakers });
-       }
-    }
-  };
-
   const handleRoomJoin = (room: Room) => {
     setCurrentRoom(room);
     setIsRoomMinimized(false);
-    handleUpdateRoom(room.id, { listeners: (room.listeners || 0) + 1 });
+    updateDoc(doc(db, 'rooms', room.id), { listeners: increment(1) });
   };
 
   const handleRoomLeave = async () => {
     if (!currentRoom || !user) return;
-    if (user.id === currentRoom.hostId) {
-      await deleteDoc(doc(db, 'rooms', currentRoom.id));
-    } else {
-      const updatedSpeakers = (currentRoom.speakers || []).filter(s => s.id !== user.id);
-      await updateDoc(doc(db, 'rooms', currentRoom.id), { speakers: updatedSpeakers, listeners: increment(-1) });
-    }
+    const roomId = currentRoom.id;
+    const hostId = currentRoom.hostId;
+    const speakers = currentRoom.speakers || [];
     setCurrentRoom(null);
     setIsRoomMinimized(false);
+    try {
+      if (user.id === hostId) {
+        await deleteDoc(doc(db, 'rooms', roomId));
+      } else {
+        const updatedSpeakers = speakers.filter(s => s.id !== user.id);
+        await updateDoc(doc(db, 'rooms', roomId), { 
+           speakers: updatedSpeakers, 
+           listeners: increment(-1) 
+        });
+      }
+    } catch (err) { console.error("Error leaving room:", err); }
   };
 
   const handleUpdateRoom = async (roomId: string, data: Partial<Room>) => {
@@ -230,18 +264,13 @@ export default function App() {
 
   if (initializing) return (
     <div className="h-[100dvh] w-full bg-[#020617] flex flex-col items-center justify-center font-cairo">
-      <motion.div initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative">
-        <div className="w-44 h-44 bg-yellow-400 rounded-[3rem] overflow-hidden shadow-[0_20px_50px_rgba(251,191,36,0.3)] border-4 border-white/20 relative z-10">
-          <motion.img animate={{ scale: [1, 1.05, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} src={appLogo} className="w-full h-full object-cover" alt="App Logo" />
+      <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="relative">
+        <div className="w-40 h-40 bg-yellow-400 rounded-[3rem] overflow-hidden shadow-[0_20px_50px_rgba(251,191,36,0.3)] border-4 border-white/20 relative z-10">
+          <img src={appLogo} className="w-full h-full object-cover" alt="Loading Logo" />
         </div>
         <div className="absolute -inset-10 bg-yellow-500/10 blur-[60px] rounded-full animate-pulse"></div>
       </motion.div>
       <motion.h1 initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mt-8 text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-200 via-yellow-400 to-amber-600">فـيـفـو لايف</motion.h1>
-      <div className="flex gap-2 mt-6">
-        <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce" style={{ animationDelay: '0s' }}></div>
-        <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-        <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
-      </div>
     </div>
   );
 
@@ -251,12 +280,13 @@ export default function App() {
     <div className={`h-[100dvh] w-full bg-[#0f172a] text-white relative md:max-w-md mx-auto shadow-2xl overflow-hidden flex flex-col font-cairo ${language === 'en' ? 'text-left' : 'text-right'}`}>
       <Toast toasts={toasts} onRemove={(id) => setToasts(prev => prev.filter(t => t.id !== id))} />
       <AnimatePresence>{announcement && <GlobalBanner announcement={announcement} />}</AnimatePresence>
+      
       <div className="flex-1 overflow-y-auto pb-20 scrollbar-hide">
         {activeTab === 'home' && (
            <div className="mt-2 space-y-3">
               <div className="px-4 flex justify-between items-center mb-2">
                  <div className="flex items-center gap-2">
-                    <img src={appLogo} className="w-8 h-8 rounded-lg shadow-lg border border-white/10" alt="Logo" />
+                    <img src={appLogo} className="w-8 h-8 rounded-lg shadow-lg border border-white/10" alt="Home Logo" />
                     <div className="text-xs font-black tracking-widest text-white/40 uppercase">VIVO LIVE</div>
                  </div>
               </div>
@@ -305,26 +335,30 @@ export default function App() {
                  <h2 className={`text-2xl ${user.nameStyle || 'font-bold text-white'}`}>{user.name}</h2>
                  <span className="font-mono text-xs text-slate-400 block mb-6">{t.id}: {user.customId || user.id}</span>
                  <div className="bg-slate-900 rounded-2xl border border-white/5 overflow-hidden">
+                    <div onClick={() => setShowWalletModal(true)} className="flex items-center justify-between p-4 border-b border-white/5 hover:bg-white/5 cursor-pointer transition-colors">
+                      <ChevronRight size={18} className="text-slate-600" />
+                      <div className="flex items-center gap-3"><span className="text-sm font-medium text-white">{t.myWallet}</span><Wallet size={18} className="text-indigo-500" /></div>
+                    </div>
                     {user.isAdmin && (
                       <div onClick={() => setShowAdminPanel(true)} className="flex items-center justify-between p-4 border-b border-white/5 hover:bg-red-500/5 cursor-pointer">
-                         <ChevronRight size={18} className="text-slate-600" />
+                        <ChevronRight size={18} className="text-slate-600" />
                         <div className="flex items-center gap-3"><span className="text-sm font-black text-red-500">{t.adminPanel}</span><ShieldCheck size={18} className="text-red-500" /></div>
                       </div>
                     )}
                     <div onClick={() => setShowEditProfileModal(true)} className="flex items-center justify-between p-4 border-b border-white/5 hover:bg-white/5 cursor-pointer">
-                       <ChevronRight size={18} className="text-slate-600" />
+                      <ChevronRight size={18} className="text-slate-600" />
                       <div className="flex items-center gap-3"><span className="text-sm font-medium text-white">{t.editAccount}</span><Edit3 size={18} className="text-emerald-500" /></div>
                     </div>
                     <div onClick={() => setShowBagModal(true)} className="flex items-center justify-between p-4 border-b border-white/5 hover:bg-white/5 cursor-pointer">
-                       <ChevronRight size={18} className="text-slate-600" />
+                      <ChevronRight size={18} className="text-slate-600" />
                       <div className="flex items-center gap-3"><span className="text-sm font-medium text-white">{t.storeBag}</span><ShoppingBag size={18} className="text-blue-500" /></div>
                     </div>
                     <div onClick={() => setShowVIPModal(true)} className="flex items-center justify-between p-4 border-b border-white/5 hover:bg-white/5 cursor-pointer">
-                       <ChevronRight size={18} className="text-slate-600" />
+                      <ChevronRight size={18} className="text-slate-600" />
                       <div className="flex items-center gap-3"><span className="text-sm font-medium text-white">{t.vipMembership}</span><Crown size={18} className="text-amber-500" /></div>
                     </div>
                     <div onClick={handleLogout} className="flex items-center justify-between p-4 hover:bg-red-900/10 cursor-pointer">
-                       <ChevronRight size={18} className="text-slate-600" />
+                      <ChevronRight size={18} className="text-slate-600" />
                       <div className="flex items-center gap-3"><span className="text-sm font-medium text-red-500">{t.logout}</span><LogOut size={18} className="text-red-500" /></div>
                     </div>
                  </div>
@@ -332,21 +366,27 @@ export default function App() {
            </div>
         )}
       </div>
+
+      <AnimatePresence>{isRoomMinimized && currentRoom && (<MiniPlayer room={currentRoom} onExpand={() => setIsRoomMinimized(false)} onLeave={handleRoomLeave} isMuted={isUserMuted} onToggleMute={() => setIsUserMuted(!isUserMuted)} />)}</AnimatePresence>
+
       <div className="absolute bottom-0 left-0 right-0 bg-[#0f172a]/95 backdrop-blur-lg border-t border-white/5 flex justify-around items-center h-20 pb-2 z-20">
          <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center gap-1 p-2 w-16 ${activeTab === 'home' ? 'text-amber-400' : 'text-slate-500'}`}><Home size={24} /><span className="text-[10px] font-medium">{t.home}</span></button>
          <button onClick={() => setActiveTab('messages')} className={`flex flex-col items-center gap-1 p-2 w-16 ${activeTab === 'messages' ? 'text-amber-400' : 'text-slate-500'}`}><MessageCircle size={24} /><span className="text-[10px] font-medium">{t.messages}</span></button>
          <button onClick={() => setShowCreateRoomModal(true)} className="flex flex-col items-center gap-1 p-2 -mt-8"><div className="bg-gradient-to-br from-amber-400 to-orange-600 w-14 h-14 rounded-full flex items-center justify-center shadow-lg border-4 border-slate-900"><Plus size={28} className="text-white" /></div></button>
          <button onClick={() => setActiveTab('profile')} className={`flex flex-col items-center gap-1 p-2 w-16 ${activeTab === 'profile' ? 'text-amber-400' : 'text-slate-500'}`}><UserIcon size={24} /><span className="text-[10px] font-medium">{t.profile}</span></button>
       </div>
+
       <AnimatePresence>
         {currentRoom && !isRoomMinimized && (
           <VoiceRoom room={currentRoom} currentUser={user!} onUpdateUser={handleUpdateUser} onLeave={handleRoomLeave} onMinimize={() => setIsRoomMinimized(true)} gifts={gifts} onEditProfile={() => setShowEditProfileModal(true)} gameSettings={gameSettings} onUpdateRoom={handleUpdateRoom} isMuted={isUserMuted} onToggleMute={() => setIsUserMuted(!isUserMuted)} onAnnouncement={(a) => setAnnouncement(a)} users={users} setUsers={() => {}} onOpenPrivateChat={(p) => setPrivateChatPartner(p)} onToggleFollow={() => {}} handleLogout={handleLogout} />
         )}
       </AnimatePresence>
+      
       <AnimatePresence>{privateChatPartner && (<PrivateChatModal partner={privateChatPartner} currentUser={user!} onClose={() => setPrivateChatPartner(null)} />)}</AnimatePresence>
-      {showVIPModal && user && <VIPModal user={user} vipLevels={vipLevels} onClose={() => setShowVIPModal(false)} onBuy={(v) => handleUpdateUser({ isVip: true, vipLevel: v.level, coins: user.coins - v.cost, frame: v.frameUrl, nameStyle: v.nameStyle })} />}
+      {showVIPModal && user && <VIPModal user={user} vipLevels={vipLevels} onClose={() => setShowVIPModal(false)} onBuy={(v) => handleUpdateUser({ isVip: true, vipLevel: v.level, coins: increment(-v.cost), frame: v.frameUrl, nameStyle: v.nameStyle })} />}
       {showEditProfileModal && user && <EditProfileModal isOpen={showEditProfileModal} onClose={() => setShowEditProfileModal(false)} currentUser={user} onSave={handleUpdateUser} />}
-      {showBagModal && user && <BagModal isOpen={showBagModal} onClose={() => setShowBagModal(false)} items={storeItems} user={user} onBuy={(item) => handleUpdateUser({ coins: user.coins - item.price, ownedItems: [...(user.ownedItems || []), item.id] })} onEquip={(item) => handleUpdateUser(item.type === 'frame' ? { frame: item.url } : { activeBubble: item.url })} />}
+      {showBagModal && user && <BagModal isOpen={showBagModal} onClose={() => setShowBagModal(false)} items={storeItems} user={user} onBuy={(item) => handleUpdateUser({ coins: (user.coins || 0) - item.price, ownedItems: arrayUnion(item.id) })} onEquip={(item) => handleUpdateUser(item.type === 'frame' ? { frame: item.url } : { activeBubble: item.url })} />}
+      {showWalletModal && user && <WalletModal isOpen={showWalletModal} onClose={() => setShowWalletModal(false)} user={user} onExchange={handleExchangeDiamonds} />}
       {showCreateRoomModal && <CreateRoomModal isOpen={showCreateRoomModal} onClose={() => setShowCreateRoomModal(false)} onCreate={handleCreateRoom} />}
       {showAdminPanel && user && (<AdminPanel isOpen={showAdminPanel} onClose={() => setShowAdminPanel(false)} currentUser={user} users={users} onUpdateUser={async (id, data) => await handleUpdateUser({ ...data, id })} rooms={rooms} setRooms={setRooms} onUpdateRoom={handleUpdateRoom} gifts={gifts} setGifts={setGifts} storeItems={storeItems} setStoreItems={setStoreItems} vipLevels={vipLevels} setVipLevels={setVipLevels} gameSettings={gameSettings} setGameSettings={setGameSettings} appBanner={appBanner} onUpdateAppBanner={onUpdateAppBanner} appLogo={appLogo} onUpdateAppLogo={onUpdateAppLogo} />)}
     </div>

@@ -28,6 +28,7 @@ export interface User {
   activeBubble?: string;
   cover?: string;
   coins: any;
+  diamonds: any; // الحقل الجديد للألماس
   wealth: any;
   charm: any;
   isVip: boolean;
@@ -129,6 +130,7 @@ export interface Room {
   speakers: User[];
   background: string;
   isLocked?: boolean;
+  micCount?: number; 
 }
 
 export interface LuckyMultiplier {

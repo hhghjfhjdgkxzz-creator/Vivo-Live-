@@ -17,18 +17,10 @@
       "purpose": "any"
     }
   ],
-  "screenshots": [
-    {
-      "src": "https://img.freepik.com/free-vector/gradient-music-festival-twitch-banner_23-2149051838.jpg",
-      "sizes": "1080x1920",
-      "type": "image/jpg",
-      "form_factor": "narrow",
-      "label": "واجهة فيفو لايف الرئيسية"
-    }
-  ],
-  "start_url": "/",
+  "start_url": ".",
   "display": "standalone",
   "theme_color": "#0f172a",
   "background_color": "#0f172a",
-  "orientation": "portrait"
+  "orientation": "portrait",
+  "scope": "/"
 }
